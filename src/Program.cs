@@ -1,42 +1,47 @@
-﻿using BoilerPlate.Interfaces;
-using BoilerPlate.Services;
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using System.IO;
-using System.Runtime.CompilerServices;
+using MovieRating.Services;
+using MovieRating.Interfaces;
+using Microsoft.Extensions.Hosting;
+using System.Threading.Tasks;
+using MovieRating.Domain;
 
-[assembly: InternalsVisibleTo("HttpClientMock.Tests.Unit")]
 namespace Template
 {
     class Program
     {
-        static void Main(string[] args)
+        public static async Task Main(string[] args)
         {
-            var services = ConfigureServices();
+            IConfigurationRoot configurationRoot = null;
+            var host = new HostBuilder()
+                .ConfigureHostConfiguration(configHost =>
+                {
+                    configHost.SetBasePath(Directory.GetCurrentDirectory());
+                    configHost.AddJsonFile("appsettings.json", optional: true);
+                    configHost.AddEnvironmentVariables();
+                    configHost.AddCommandLine(args);
+                })
+                .ConfigureAppConfiguration((hostContext, configApp) =>
+                {
+                    hostContext.HostingEnvironment.ApplicationName = "HttpClientMock";
+                    configurationRoot = configApp.Build();
+                })
+                .ConfigureServices((hostContext, services) =>
+                {
+                    services.AddSingleton<IConfiguration>(hostContext.Configuration);
+                    services.AddSingleton<IConfigurationRoot>(configurationRoot);
+                    services.AddSingleton<IHostedService, App>();
+                    services.AddSingleton<IOmdbService<Movie>, OmdbService>();
+                    services.AddHttpClient();
+                })
+                .Build();
 
-            var serviceProvider = services.BuildServiceProvider();
-            serviceProvider.GetService<App>().Run();
-        }
-
-        private static IServiceCollection ConfigureServices()
-        {
-            IServiceCollection services = new ServiceCollection();
-
-            var config = LoadConfiguration();
-            services.AddSingleton(config);
-            services.AddSingleton<ITestService, TestService>();
-            services.AddTransient<App>();
-
-            return services;
-        }
-
-        public static IConfiguration LoadConfiguration()
-        {
-            var builder = new ConfigurationBuilder()
-                .SetBasePath(Directory.GetCurrentDirectory())
-                .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true);
-
-            return builder.Build();
+            using (host)
+            {
+                await host.StartAsync();
+                await host.StopAsync();
+            }
         }
     }
 }
